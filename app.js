@@ -481,7 +481,7 @@ function populateTierSelect(affixSelect, tierSelect) {
     const n = a.tiers?.length || 0;
 
     for (let i = 1; i <= n; i++) {
-        tierSelect.appendChild(option(i, `T${i}${i >= 6 ? " / drop-only" : ""}`));
+        tierSelect.appendChild(option(i, `T${i}${i >= 6 ? " : ""}`));
     }
 
     tierSelect.value = [...tierSelect.options].some(o => o.value === prev)
@@ -494,8 +494,8 @@ function populateRollSelect(s) {
 
     clear(s);
 
-    s.appendChild(option("random", "Random within tier"));
-    s.appendChild(option("max", "Max roll byte 255"));
+    s.appendChild(option("random", "Random roll"));
+    s.appendChild(option("max", "Max roll"));
 
     s.value = p || "random";
 }
