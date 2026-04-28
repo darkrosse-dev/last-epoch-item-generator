@@ -154,7 +154,7 @@
         const searchCard = cards.find(c => c.querySelector("#globalItemSearch"));
         const baseCard = cards.find(c => c.querySelector("#itemTypeSelect"));
         if (!searchCard || !baseCard || searchCard === baseCard) return;
-        searchCard.querySelector("h2").textContent = "0. Select item";
+        searchCard.querySelector("h2").textContent = "Select item";
         const hint = searchCard.querySelector(".hint");
         if (hint) hint.textContent = "Use global search for a specific base, unique, or set item. Or choose an item type below and then select from all relevant base/unique/set items.";
         const h3 = document.createElement("h3"); h3.textContent = "Browse by item type"; h3.style.marginTop = "22px"; searchCard.appendChild(h3);
