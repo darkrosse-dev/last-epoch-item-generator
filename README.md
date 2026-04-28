@@ -79,7 +79,7 @@ This is dummy data. Do **not** copy this exact item data unless you specifically
 
 Example of what it looks like in the stash file:
 
-![Example of savedItems data in STASH_0_TAB_0](./assets/stash-saved-items-example.png)
+![Example of savedItems data in STASH_0_TAB_0](https://github.com/darkrosse-dev/last-epoch-item-generator/blob/main/asset/stash-saved-items-example.jpg)
 
 ---
 
