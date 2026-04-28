@@ -7,12 +7,12 @@ The generator is built around parsed item and affix DB data and supports:
 - normal base items with prefix/suffix affixes;
 - Unique and Set item lookup;
 - Legendary Potential selection for supported Unique items;
-- Weaver's Will item detection and safe blocking until its save format is fully decoded;
 - class-restricted affix filtering;
 - hidden unsupported item categories that should not be manually generated.
 
 > **Use this only in offline mode. Back up your save files before editing anything.**
 
+Please note that Weaver's Will item creation is not available (detection and safe blocking until its save format is fully decoded)
 ---
 
 ## HOW TO USE
@@ -79,7 +79,8 @@ This is dummy data. Do **not** copy this exact item data unless you specifically
 
 Example of what it looks like in the stash file:
 
-![Example of savedItems data in STASH_0_TAB_0](https://github.com/darkrosse-dev/last-epoch-item-generator/blob/main/asset/stash-saved-items-example.jpg)
+<img width="1311" height="96" alt="stash-saved-items-example" src="https://github.com/user-attachments/assets/d8ef0135-374f-4986-8487-7676a076bc24" />
+
 
 ---
 
