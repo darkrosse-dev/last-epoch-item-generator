@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Last Epoch Item JSON Generator</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Local tool</p>
+        <h1>Last Epoch Item JSON Generator</h1>
+        <p class="subtitle">
+          Search all parsed base, unique, set, and non-equippable records. For compact save generation, the tool uses the selected equippable base type + subtype and preserves the existing affix encoding logic.
+        </p>
+      </div>
+      <div class="status" id="loadStatus">Loading offline DB…</div>
+    </section>
+
+    <section class="card">
+      <h2>0. Search all items</h2>
+      <p class="hint">
+        Search by item name, unique/set name, base type, slug, ID, or class. Selecting a unique/set item will preselect its underlying base type and first compatible subtype.
+      </p>
+      <div class="grid two">
+        <label>
+          Global item search
+          <input id="globalItemSearch" type="search" placeholder="Example: Exsanguinous, Red Ring, Augury Helm…" autocomplete="off" />
+        </label>
+        <label>
+          Search results
+          <select id="globalItemResults" size="8"></select>
+        </label>
+      </div>
+      <div class="buttonRow">
+        <button id="selectGlobalItemBtn" class="secondary">Select highlighted item</button>
+        <button id="clearGlobalSearchBtn" class="secondary">Clear search</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>1. Base item</h2>
+      <div class="grid two">
+        <label>
+          Item type
+          <select id="itemTypeSelect"></select>
+        </label>
+
+        <label>
+          Item name
+          <select id="itemSelect"></select>
+        </label>
+      </div>
+
+      <div class="grid three controlsRow">
+        <label>
+          Filter current item type
+          <input id="itemSearch" type="search" placeholder="Filter within selected item type…" autocomplete="off" />
+        </label>
+        <label class="checkboxLabel">
+          <input id="hideCannotDrop" type="checkbox" />
+          Hide cannotDrop items
+        </label>
+        <label class="checkboxLabel">
+          <input id="enforceClass" type="checkbox" checked />
+          Enforce class restrictions
+        </label>
+      </div>
+
+      <div class="itemInfo" id="itemInfo"></div>
+    </section>
+
+    <section class="card">
+      <h2>2. Unique / Set options</h2>
+      <p class="hint">
+        These options are used only when you select a Unique or Set item from global search.
+        For normal base items, generation still uses the prefix/suffix affix logic below.
+      </p>
+      <div class="grid two">
+        <label>
+          Legendary Potential
+          <select id="uniqueLp">
+            <option value="0">0 LP</option>
+            <option value="1" selected>1 LP</option>
+            <option value="2">2 LP</option>
+            <option value="3">3 LP</option>
+            <option value="4">4 LP</option>
+          </select>
+        </label>
+
+        <label>
+          Unique roll bytes
+          <select id="uniqueRollMode">
+            <option value="random" selected>Random unique rolls</option>
+            <option value="max">Max roll bytes 255,255</option>
+          </select>
+        </label>
+      </div>
+      <div class="itemInfo compactNotice" id="uniqueModeNotice">
+        Select a Unique or Set item from global search to activate this mode.
+      </div>
+      <p class="hint">
+        Current inferred unique format:
+        <code>[5, seed1, seed2, baseTypeID, subTypeID, 7, factionByte, implicitBytes..., uniqueIdHigh, uniqueIdLow, uniqueRollBytes..., LP]</code>.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>3. Affixes</h2>
+      <p class="hint">
+        Empty rows are ignored. Affixes are filtered by selected item type and class restrictions.
+      </p>
+
+      <div class="affixGrid">
+        <div class="affixHeader">Slot</div>
+        <div class="affixHeader">Affix</div>
+        <div class="affixHeader">Tier</div>
+        <div class="affixHeader">Roll</div>
+
+        <div class="slotName prefix">Prefix 1</div>
+        <select id="prefix1"></select>
+        <select id="prefix1Tier"></select>
+        <select id="prefix1RollMode"></select>
+
+        <div class="slotName prefix">Prefix 2</div>
+        <select id="prefix2"></select>
+        <select id="prefix2Tier"></select>
+        <select id="prefix2RollMode"></select>
+
+        <div class="slotName suffix">Suffix 1</div>
+        <select id="suffix1"></select>
+        <select id="suffix1Tier"></select>
+        <select id="suffix1RollMode"></select>
+
+        <div class="slotName suffix">Suffix 2</div>
+        <select id="suffix2"></select>
+        <select id="suffix2Tier"></select>
+        <select id="suffix2RollMode"></select>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>4. Generation options</h2>
+
+      <div class="grid two">
+        <label id="rankMarkerWrap" class="hidden">
+          Faction / rank marker
+          <input id="rankMarker" type="number" min="0" max="255" value="1" />
+        </label>
+
+        <label id="forgingPotentialWrap">
+          Forging potential
+          <input id="forgingPotential" type="number" min="0" max="255" value="21" />
+        </label>
+
+        <label class="checkboxLabel">
+          <input id="randomiseHeader" type="checkbox" checked />
+          Randomise seed + implicit bytes
+        </label>
+      </div>
+
+      <label class="checkboxLabel advancedToggle">
+        <input id="advancedBytesToggle" type="checkbox" />
+        Show advanced raw seed / implicit bytes
+      </label>
+
+      <div id="advancedBytesPanel" class="grid five hidden">
+        <label>
+          Seed byte 1
+          <input id="seed1" type="number" min="0" max="255" value="65" />
+        </label>
+        <label>
+          Seed byte 2
+          <input id="seed2" type="number" min="0" max="255" value="94" />
+        </label>
+        <label>
+          Implicit byte 1
+          <input id="imp1" type="number" min="0" max="255" value="58" />
+        </label>
+        <label>
+          Implicit byte 2
+          <input id="imp2" type="number" min="0" max="255" value="84" />
+        </label>
+        <label>
+          Implicit byte 3
+          <input id="imp3" type="number" min="0" max="255" value="140" />
+        </label>
+      </div>
+
+      <p class="hint">
+        Rank/faction byte is fixed to <code>1</code> for generated items and hidden from the UI.
+        For Unique/Set items, Forging Potential is hidden because they do not use it.
+      </p>
+
+      <button id="generateBtn">Generate</button>
+    </section>
+
+    <section class="card outputCard">
+      <h2>Generated item data</h2>
+      <textarea id="output" spellcheck="false" placeholder="Generated JSON will appear here…"></textarea>
+      <div class="buttonRow">
+        <button id="copyBtn" class="secondary">Copy</button>
+        <button id="downloadBtn" class="secondary">Download .txt</button>
+      </div>
+
+      <h3>Decoded preview</h3>
+      <pre id="preview"></pre>
+    </section>
+  </main>
+
+  <script src="./app.js?v=all-items-json-1"></script>
+</body>
+</html>
