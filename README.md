@@ -1,138 +1,379 @@
-# Last Epoch Item JSON Generator — All Items JSON Build
+# Last Epoch Offline Item Generator
 
-This build parses the supplied JS database bundle into clean JSON files and uses them offline.
+A local/static web tool for generating compact Last Epoch item `data` arrays for offline save editing.
 
-## Included JSON dumps
+The generator is built around parsed item and affix DB data and supports:
 
-- `data/item_dump.json`
-  - equippable base items
-  - non-equippable items
-  - unique and set items
-  - classes
-- `data/affix_dump.json`
-  - all affixes
-- `data/offline_db.json`
-  - combined compact DB used by the site
+- normal base items with prefix/suffix affixes;
+- Unique and Set item lookup;
+- Legendary Potential selection for supported Unique items;
+- Weaver's Will item detection and safe blocking until its save format is fully decoded;
+- class-restricted affix filtering;
+- hidden unsupported item categories that should not be manually generated.
 
-## Counts
+> **Use this only in offline mode. Back up your save files before editing anything.**
 
-- 39 equippable item types
-- 897 equippable base item records
-- 7 non-equippable item types
-- 610 non-equippable item records
-- 469 unique/set records
-- 1112 affix records
-- 5 class records
+---
 
-## How to run
+## HOW TO USE
 
-Unzip this folder, then run:
+### 1. Force offline mode for the game
 
-```bat
-cd %USERPROFILE%\Downloads\last_epoch_item_generator_all_items
-py -m http.server 8000
-```
+Start Last Epoch in **offline mode**.
 
-Open:
+This workflow is meant for offline saves only.
+
+---
+
+### 2. Clear your default stash tab
+
+Go to your stash and clear out your **default / starting tab**.
+
+We will use the core file for this tab to insert generated items.
+
+---
+
+### 3. Exit to the login screen
+
+You can stay inside the game client, but exit to the **login screen** before editing the save file.
+
+This helps ensure the stash file is not actively being rewritten while you edit it.
+
+---
+
+### 4. Open your save folder
+
+Navigate to:
 
 ```text
-http://localhost:8000
+%localappdata%low\Eleventh Hour Games\Last Epoch\Saves
 ```
 
-## Important note about unique/set items
+---
 
-The search includes unique and set items. Selecting a unique/set item will preselect its underlying base type and first subtype.
+### 5. Open the default stash tab file
 
-The compact generated item array still uses the rare/exalted-style format that was reverse engineered earlier:
+Find this file:
 
 ```text
-[5, seed1, seed2, baseTypeID, subTypeID, affixCount, rankMarker,
- implicit1, implicit2, implicit3, forgingPotential, affixCount,
+STASH_0_TAB_0
+```
+
+Open it with any text editor, for example:
+
+- Notepad
+- Notepad++
+- VS Code
+
+---
+
+### 6. Find the `savedItems` item data
+
+Look for a section similar to this:
+
+```json
+"savedItems":[{"itemData":null,"data":[5,51,50,22,41,7,1,210,131,99,1,43,97,77,178,175,0],"inventoryPosition":{"x":0,"y":15},"quantity":1,"formatVersion":2}]
+```
+
+This is dummy data. Do **not** copy this exact item data unless you specifically want to test with it.
+
+Example of what it looks like in the stash file:
+
+![Example of savedItems data in STASH_0_TAB_0](./assets/stash-saved-items-example.png)
+
+---
+
+### 7. Replace only the numbers inside `data:[ ... ]`
+
+Generate an item on the site, then copy the generated value.
+
+Replace only the numbers between the square brackets:
+
+```json
+"data":[PASTE_GENERATED_NUMBERS_HERE]
+```
+
+For example, replace this:
+
+```json
+"data":[5,51,50,22,41,7,1,210,131,99,1,43,97,77,178,175,0]
+```
+
+with the generated array from the site.
+
+Do **not** remove the surrounding JSON fields unless you know what you are doing.
+
+Keep:
+
+```json
+"itemData":null
+"inventoryPosition":{"x":0,"y":15}
+"quantity":1
+"formatVersion":2
+```
+
+---
+
+### 8. Save the file
+
+Save `STASH_0_TAB_0`.
+
+---
+
+### 9. Log back into your character
+
+Return to your character and open the default stash tab again.
+
+The generated item should appear there.
+
+---
+
+## Bulletproof replacement method
+
+Sometimes an item may not appear because of:
+
+- stash position conflicts;
+- item size conflicts;
+- a rare bad random seed or implicit byte result;
+- replacing a small item with a larger item;
+- replacing an item with a very different base category.
+
+The safest workflow is:
+
+1. Put any item of the **same kind** into the default stash tab.
+   - Example: if you want to generate a mace, place a mace in the tab first.
+2. Exit to the login screen.
+3. Open `STASH_0_TAB_0`.
+4. Find that item's `"data":[ ... ]` section.
+5. Replace only the numbers inside the brackets with the generated value.
+6. Keep the existing `inventoryPosition`.
+
+This helps prevent inventory grid size conflicts because the placeholder item already occupies a valid position for that item type.
+
+Different items have different grid sizes, so replacing one item type with another can create conflicts.
+
+---
+
+## What the generated array represents
+
+The generator produces compact Last Epoch item arrays such as:
+
+```json
+[5,18,166,1,6,7,1,201,131,198,1,98,255,255,255,255,255,255,255,255,4,255,255]
+```
+
+The exact meaning depends on item type, but the current model is:
+
+### Normal rare/exalted-style items
+
+```text
+[5, seed1, seed2, baseTypeID, subTypeID, affixCount, rankByte,
+ implicit1, implicit2, implicit3,
+ forgingPotential, affixCount,
  ...affixBlocks,
  0]
 ```
 
-Unique/set save encoding may differ, so this generator treats unique/set entries as searchable metadata and base-reference helpers unless we later reverse-engineer their exact save format.
-
-
-## Unique / Set item generation with Legendary Potential
-
-This build adds an inferred Unique/Set generation path.
-
-When you select a unique or set item from global search, the Generate button uses this structure:
+Each affix block is 3 bytes:
 
 ```text
-[5, seed1, seed2, baseTypeID, subTypeID, 7, factionByte,
+[encodedTierAndAffixHighBits, affixLowByte, rollByte]
+```
+
+Affix encoding:
+
+```js
+byte0 = ((tier - 1) << 4) | (affixId >> 8)
+byte1 = affixId & 255
+byte2 = rollByte
+```
+
+### Unique / Set items
+
+Unique and Set items use a different compact format:
+
+```text
+[5, seed1, seed2, baseTypeID, subTypeID, 7, rankByte,
  implicit1, implicit2, implicit3,
  uniqueIdHigh, uniqueIdLow,
  ...uniqueRollBytes,
- LP]
+ LP-or-extra-data]
 ```
 
-Observed examples used for this inference:
+Normal Unique items can use Legendary Potential values:
 
 ```text
-Whetstone Gavel, uniqueId 438 -> [1,182]
-Last byte 0 -> no Legendary Potential
-Last byte 1 -> 1 Legendary Potential
+0, 1, 2, 3, 4
 ```
 
-For Whetstone Gavel, the DB has 4 unique roll slots, so the generated unique roll section uses 8 bytes.
+Set items cannot have Legendary Potential, so LP is forced to `0`.
 
-Notes:
+### Weaver's Will items
 
-- This build generates un-imprinted unique/set items with LP.
-- A post-imprint Legendary item may use an additional or different format and still needs separate testing.
-- Faction/rank byte `5` showed Rank 5 in the provided example.
-- Faction/rank byte `128` matched the no-rank example.
+Weaver's Will items are detected by DB properties such as:
 
+```js
+legendaryType === 1
+```
 
-## v2 change: Set items cannot have LP
+or:
 
-Set items now automatically force Legendary Potential to `0`.
+```js
+effectiveLevelForLegendaryPotential === -1
+```
 
-When a Set item is selected from global search:
+These items **cannot have Legendary Potential**.
 
-- the LP dropdown is disabled
-- the generated final LP byte is forced to `0`
-- the preview marks LP as forced to 0
+They gain random affixes while gaining experience, and their save-byte layout is not fully decoded yet. Because of that, the tool currently blocks generation for Weaver's Will items to avoid corrupting item data.
 
-Unique items still allow LP `0–4`.
+---
 
+## Current feature set
 
-## v3 correction: LP position for uniques with more than 4 roll slots
+### Item search
 
-`Wall of Nothing` showed that LP is not always the final byte.
+The site can search across:
 
-Corrected inferred unique structure:
+- base items;
+- Unique items;
+- Set items;
+- supported equippable item records.
+
+Selecting a Unique or Set item automatically preselects its underlying base type and subtype.
+
+### Affix filtering
+
+Affix dropdowns are filtered by:
+
+- selected item base type;
+- prefix/suffix slot;
+- class restrictions where applicable.
+
+This prevents obvious invalid combinations, such as selecting Mage-only affixes on Sentinel-only items.
+
+### Hidden item types
+
+The following base types are hidden from selectable item types and global search because they are not useful/safe for current item generation:
 
 ```text
-[5, seed1, seed2, baseTypeID, subTypeID, 7, factionByte,
- implicit1, implicit2, implicit3,
- uniqueIdHigh, uniqueIdLow,
- first 8 uniqueRollBytes,
- LP,
- remaining uniqueRollBytes]
+Blessing [baseTypeID 34]
+Eos Lens [baseTypeID 38]
+Dysis Lens [baseTypeID 39]
+Mesembria Lens [baseTypeID 37]
+Arctus Lens [baseTypeID 36]
+Greater Lens [baseTypeID 35]
 ```
 
-Why:
+### Rank byte
 
-- Whetstone Gavel has 4 unique roll slots = 8 roll bytes, so LP appears at the end.
-- Wall of Nothing has 5 unique roll slots = 10 roll bytes. If LP is placed after all 10 roll bytes, the game reads a roll byte (`255` in max mode) as LP.
-- Inserting LP after the first 8 roll bytes should make Wall of Nothing show LP 4 while preserving the final roll bytes.
+The rank/faction byte is currently hidden and forced to:
 
+```text
+1
+```
 
-## v4 UI changes
-
-- Rank/faction byte is now hidden and forced to `1` for generated items.
-- Forging Potential is automatically hidden for Unique and Set items.
-- Raw seed and implicit byte inputs are now hidden under an advanced toggle.
-- The randomise seed/implicit option remains visible because these bytes still need valid values in the compact item array.
+This keeps generated items consistent and avoids exposing a confusing low-level field.
 
 ### Seed and implicit bytes
 
-In the compact item arrays, bytes 1–2 are currently treated as item seed / identity bytes.
-Bytes 7–9 are currently treated as base implicit roll bytes.
+The site can randomize seed and implicit bytes.
 
-They are not the same thing as affix roll bytes. Affix roll mode controls only the selected prefix/suffix affix blocks.
-Unique roll mode controls unique mod roll bytes after uniqueId. The seed and implicit bytes are separate low-level bytes, so the UI now keeps them automatic by default.
+These bytes are separate from affix rolls:
+
+```text
+seed1, seed2
+implicit1, implicit2, implicit3
+```
+
+They appear to affect internal item seed/identity and base implicit rolls. They are hidden behind advanced options because normal users usually do not need to edit them manually.
+
+---
+
+## Changelog
+
+### Latest
+
+- Added a guard for Weaver's Will items.
+- Weaver's Will items now have LP disabled.
+- Weaver's Will generation is blocked until the save layout is decoded.
+- Added item type filtering for unsupported lens/blessing categories.
+- Hid selected item categories from both item type dropdown and global search.
+- Forced generated item rank byte to `1`.
+- Hid the raw rank selector from the UI.
+- Hid Forging Potential when a Unique or Set item is selected.
+- Moved raw seed and implicit byte controls into advanced options.
+
+### Unique item improvements
+
+- Added Unique and Set item lookup.
+- Added Legendary Potential selector for normal Unique items.
+- Forced LP to `0` for Set items.
+- Added unique roll byte generation.
+- Adjusted LP byte positioning for Unique items with more than four unique roll slots.
+
+### Affix generation improvements
+
+- Added valid prefix/suffix dropdowns.
+- Added tier selection.
+- Added max/random roll modes.
+- Added class-restriction filtering.
+- Confirmed affix encoding format:
+
+```js
+byte0 = ((tier - 1) << 4) | (affixId >> 8)
+byte1 = affixId & 255
+byte2 = rollByte
+```
+
+### Data improvements
+
+- Parsed the game DB bundle into formatted JSON files.
+- Added item data in JSON format.
+- Added affix data in JSON format.
+- Added combined offline DB JSON.
+- Added searchable base, Unique, and Set item lists.
+
+---
+
+## Known limitations
+
+- Weaver's Will save layout is not fully decoded yet.
+- Imprinted Legendary item format may differ from simple Unique + LP format.
+- Some random seed/implicit combinations may produce undesirable or invalid results.
+- Inventory position and item size conflicts can prevent an item from appearing.
+- Always back up your save files before editing.
+
+---
+
+## Recommended testing workflow
+
+Use the default stash tab as a controlled test area.
+
+For best results:
+
+1. Keep only one placeholder item in the tab.
+2. Use a placeholder item of the same broad type.
+3. Replace only the `data:[ ... ]` numbers.
+4. Keep the existing `inventoryPosition`.
+5. Log back in and check the tab.
+6. If the item does not appear, try generating again with new randomized seed/implicit bytes.
+
+---
+
+## File structure
+
+Typical hosted/static structure:
+
+```text
+index.html
+app.js
+styles.css
+weaver-guard.js
+item-type-filter.js
+data/
+  offline_db.json
+  item_dump.json
+  affix_dump.json
+```
+
+The site can be hosted on GitHub Pages, Netlify, Vercel, or any static hosting service.
