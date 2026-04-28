@@ -1,6 +1,6 @@
 // Item image viewer overlay
-// Uses data/item_images.json or data/item_image_manifest/item_images.json,
-// then displays selected item image from assets/items/base|unique|set.
+// Shows selected item image from assets/items/base|unique|set.
+// Uses an optional manifest when available, but can also fall back to image fields from the loaded item DB.
 
 (function () {
     const MANIFEST_PATHS = [
@@ -8,6 +8,7 @@
         "./data/item_image_manifest/item_images.json?v=1"
     ];
 
+    const ASSET_ROOT = "assets/items";
     let imageManifest = null;
 
     function installImageStyles() {
@@ -79,15 +80,18 @@
                 const res = await fetch(url, { cache: "no-store" });
                 if (!res.ok) continue;
 
-                imageManifest = await res.json();
+                const text = await res.text();
+                if (!text.trim()) continue;
+
+                imageManifest = JSON.parse(text);
                 console.log(`Loaded item image manifest: ${url}`);
                 return;
-            } catch {
-                // Try next path.
+            } catch (err) {
+                console.warn(`Skipped item image manifest ${url}:`, err);
             }
         }
 
-        console.warn("Item image manifest not found.");
+        console.warn("Item image manifest not found or empty; using DB image fields when available.");
     }
 
     function ensureImagePanel() {
@@ -115,43 +119,134 @@
         return panel;
     }
 
+    function normalizeImageFile(value) {
+        if (typeof value !== "string") return "";
+
+        const trimmed = value.trim();
+        if (!trimmed) return "";
+
+        return trimmed
+            .split("?")[0]
+            .split("#")[0]
+            .split("/")
+            .pop()
+            .split("\\")
+            .pop();
+    }
+
+    function imageFileFromRecord(record) {
+        if (!record) return "";
+
+        const candidates = [
+            record.imageFile,
+            record.image,
+            record.icon,
+            record.iconFile,
+            record.iconName,
+            record.itemIcon,
+            record.inventoryIcon,
+            record.sprite,
+            record.spriteName,
+            record.texture,
+            record.textureName,
+            record.tooltipImage,
+            record.inventoryImage
+        ];
+
+        for (const candidate of candidates) {
+            const file = normalizeImageFile(candidate);
+            if (file) return file;
+        }
+
+        return "";
+    }
+
+    function kindForUnique(unique) {
+        return unique?.isSetItem ? "set" : "unique";
+    }
+
+    function makeLocalPath(kind, imageFile) {
+        if (!imageFile) return "";
+        const safeKind = ["base", "unique", "set"].includes(kind) ? kind : "base";
+        return `${ASSET_ROOT}/${safeKind}/${imageFile}`;
+    }
+
     function normalizeLocalPath(record) {
         if (!record) return "";
 
         let localPath = record.localPath || "";
 
-        // Support the newer manifest structure too, even though your actual files
-        // are currently under assets/items.
+        // Support the alternative manifest structure, even though this repo stores
+        // downloaded images under assets/items/.
         if (localPath.startsWith("data/item_image_manifest/items/")) {
-            localPath = localPath.replace("data/item_image_manifest/items/", "assets/items/");
+            localPath = localPath.replace("data/item_image_manifest/items/", `${ASSET_ROOT}/`);
         }
 
-        if (!localPath && record.imageFile) {
-            const kind = record.kind === "set" ? "set" : record.kind === "unique" ? "unique" : "base";
-            localPath = `assets/items/${kind}/${record.imageFile}`;
+        if (!localPath) {
+            const imageFile = imageFileFromRecord(record);
+            if (imageFile) {
+                const kind = record.kind === "set" ? "set" : record.kind === "unique" ? "unique" : "base";
+                localPath = makeLocalPath(kind, imageFile);
+            }
         }
 
         if (!localPath) return "";
 
-        return "./" + localPath.replace(/^\.?\//, "");
+        return "./" + String(localPath).replace(/^\.?\//, "");
     }
 
-    function getSelectedImageRecord() {
-        if (!imageManifest) return null;
+    function resolveLookup(value) {
+        if (!value) return null;
+        if (typeof value === "object") return value;
 
-        const lookup = imageManifest.lookup || {};
+        if (Number.isInteger(value) && imageManifest?.items?.[value]) {
+            return imageManifest.items[value];
+        }
 
+        if (typeof value === "string") {
+            if (imageManifest?.items) {
+                const found = imageManifest.items.find(item =>
+                    item.localPath === value ||
+                    item.imageFile === value ||
+                    item.slug === value
+                );
+
+                if (found) return found;
+            }
+
+            return { localPath: value };
+        }
+
+        return null;
+    }
+
+    function manifestLookup(keys) {
+        const lookup = imageManifest?.lookup || {};
+
+        for (const key of keys) {
+            const record = resolveLookup(lookup[key]);
+            if (record) return record;
+        }
+
+        return null;
+    }
+
+    function dbFallbackRecord() {
         try {
             const unique = state?.selectedSpecialItem;
 
             if (unique && unique.uniqueId !== undefined) {
-                const uniqueId = Number(unique.uniqueId);
+                const imageFile = imageFileFromRecord(unique);
+                if (!imageFile) return null;
 
-                return (
-                    lookup[`unique:${uniqueId}`] ||
-                    lookup[`set:${uniqueId}`] ||
-                    null
-                );
+                const kind = kindForUnique(unique);
+                return {
+                    kind,
+                    name: itemDisplayName(unique),
+                    uniqueId: unique.uniqueId,
+                    imageFile,
+                    localPath: makeLocalPath(kind, imageFile)
+                };
             }
 
             const type = getSelectedItemType();
@@ -159,7 +254,48 @@
 
             if (!type || !item) return null;
 
-            return lookup[`base:${type.baseTypeID}:${item.subTypeID}`] || null;
+            const imageFile = imageFileFromRecord(item);
+            if (!imageFile) return null;
+
+            return {
+                kind: "base",
+                name: itemDisplayName(item),
+                baseTypeID: type.baseTypeID,
+                subTypeID: item.subTypeID,
+                imageFile,
+                localPath: makeLocalPath("base", imageFile)
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    function getSelectedImageRecord() {
+        try {
+            const unique = state?.selectedSpecialItem;
+
+            if (unique && unique.uniqueId !== undefined) {
+                const uniqueId = Number(unique.uniqueId);
+                const fromManifest = manifestLookup([
+                    `unique:${uniqueId}`,
+                    `set:${uniqueId}`
+                ]);
+
+                return fromManifest || dbFallbackRecord();
+            }
+
+            const type = getSelectedItemType();
+            const item = getSelectedItem();
+
+            if (type && item) {
+                const fromManifest = manifestLookup([
+                    `base:${type.baseTypeID}:${item.subTypeID}`
+                ]);
+
+                return fromManifest || dbFallbackRecord();
+            }
+
+            return dbFallbackRecord();
         } catch {
             return null;
         }
@@ -181,8 +317,6 @@
             panel.classList.add("hidden");
             return;
         }
-
-        panel.classList.remove("hidden");
 
         img.onload = () => {
             panel.classList.remove("hidden");
