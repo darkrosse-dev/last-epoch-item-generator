@@ -478,16 +478,26 @@ function populateTierSelect(affixSelect, tierSelect) {
 
     tierSelect.disabled = false;
 
+//     const n = a.tiers?.length || 0;
+
+//     for (let i = 1; i <= n; i++) {
+//         tierSelect.appendChild(option(i, `T${i}${i >= 6 ? " : ""}`));
+//     }
+
+//     tierSelect.value = [...tierSelect.options].some(o => o.value === prev)
+//         ? prev
+//         : String(Math.min(6, n || 1));
+// }
+
     const n = a.tiers?.length || 0;
 
-    for (let i = 1; i <= n; i++) {
-        tierSelect.appendChild(option(i, `T${i}${i >= 6 ? " : ""}`));
-    }
-
-    tierSelect.value = [...tierSelect.options].some(o => o.value === prev)
-        ? prev
-        : String(Math.min(6, n || 1));
+for (let i = 1; i <= n; i++) {
+    tierSelect.appendChild(option(i, `T${i}${i >= 6 ? " :" : ""}`));
 }
+
+tierSelect.value = [...tierSelect.options].some(o => o.value === prev)
+    ? prev
+    : String(Math.min(6, n || 1));
 
 function populateRollSelect(s) {
     const p = s.value;
