@@ -17,57 +17,81 @@
         const style = document.createElement("style");
         style.id = "item-image-viewer-styles";
         style.textContent = `
-            .itemImagePanel {
-                display: flex;
-                align-items: center;
-                gap: 14px;
+            .itemMetaRow {
+                display: grid;
+                grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+                gap: 18px;
+                align-items: stretch;
                 margin: 14px 0;
-                padding: 12px 14px;
+            }
+
+            .itemMetaRow > .itemInfo {
+                margin: 0;
+                min-height: 260px;
+            }
+
+            .itemImagePanel {
+                min-height: 260px;
+                margin: 0;
+                padding: 18px;
                 border: 1px solid rgba(148, 163, 184, 0.25);
                 border-radius: 14px;
                 background: rgba(15, 23, 42, 0.45);
+                display: flex;
+                align-items: center;
+                justify-content: center;
             }
 
             .itemImagePanel.hidden {
                 display: none;
             }
 
+            .itemMetaRow:has(.itemImagePanel.hidden) {
+                grid-template-columns: 1fr;
+            }
+
             .itemImageFrame {
-                width: 74px;
-                height: 74px;
-                flex: 0 0 74px;
+                width: 100%;
+                height: 100%;
+                min-height: 220px;
                 display: grid;
                 place-items: center;
                 border-radius: 12px;
-                background: rgba(2, 6, 23, 0.45);
-                border: 1px solid rgba(148, 163, 184, 0.2);
+                background: rgba(2, 6, 23, 0.28);
+                border: 1px solid rgba(148, 163, 184, 0.16);
             }
 
             .itemImageFrame img {
-                max-width: 64px;
-                max-height: 64px;
+                max-width: 240px;
+                max-height: 240px;
+                width: auto;
+                height: auto;
                 object-fit: contain;
+                image-rendering: auto;
+                display: block;
             }
 
-            .itemImageText {
-                display: flex;
-                flex-direction: column;
-                gap: 4px;
-                color: #cbd5e1;
-                font-size: 13px;
-                line-height: 1.35;
+            .itemImageText,
+            .itemImagePath,
+            #itemImageName,
+            #itemImageKind,
+            #itemImagePath {
+                display: none !important;
             }
 
-            .itemImageText strong {
-                color: #f8fafc;
-                font-size: 15px;
-            }
+            @media (max-width: 900px) {
+                .itemMetaRow {
+                    grid-template-columns: 1fr;
+                }
 
-            .itemImagePath {
-                color: #94a3b8;
-                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-                font-size: 12px;
-                word-break: break-all;
+                .itemImagePanel {
+                    min-height: 220px;
+                }
+
+                .itemImageFrame img {
+                    max-width: 220px;
+                    max-height: 220px;
+                }
             }
         `;
 
@@ -95,27 +119,34 @@
     }
 
     function ensureImagePanel() {
-        let panel = document.getElementById("itemImagePanel");
-        if (panel) return panel;
-
         const itemInfo = document.getElementById("itemInfo");
         if (!itemInfo || !itemInfo.parentElement) return null;
 
-        panel = document.createElement("div");
-        panel.id = "itemImagePanel";
-        panel.className = "itemImagePanel hidden";
-        panel.innerHTML = `
-            <div class="itemImageFrame">
-                <img id="itemImagePreview" alt="" />
-            </div>
-            <div class="itemImageText">
-                <strong id="itemImageName">No image selected</strong>
-                <span id="itemImageKind"></span>
-                <span id="itemImagePath" class="itemImagePath"></span>
-            </div>
-        `;
+        let row = document.getElementById("itemMetaRow");
+        if (!row) {
+            row = document.createElement("div");
+            row.id = "itemMetaRow";
+            row.className = "itemMetaRow";
+            itemInfo.parentElement.insertBefore(row, itemInfo);
+            row.appendChild(itemInfo);
+        }
 
-        itemInfo.parentElement.insertBefore(panel, itemInfo);
+        let panel = document.getElementById("itemImagePanel");
+        if (!panel) {
+            panel = document.createElement("div");
+            panel.id = "itemImagePanel";
+            panel.className = "itemImagePanel hidden";
+            panel.innerHTML = `
+                <div class="itemImageFrame">
+                    <img id="itemImagePreview" alt="" />
+                </div>
+            `;
+        }
+
+        if (panel.parentElement !== row) {
+            row.insertBefore(panel, itemInfo);
+        }
+
         return panel;
     }
 
@@ -176,8 +207,6 @@
 
         let localPath = record.localPath || "";
 
-        // Support the alternative manifest structure, even though this repo stores
-        // downloaded images under assets/items/.
         if (localPath.startsWith("data/item_image_manifest/items/")) {
             localPath = localPath.replace("data/item_image_manifest/items/", `${ASSET_ROOT}/`);
         }
@@ -306,14 +335,10 @@
         if (!panel) return;
 
         const img = document.getElementById("itemImagePreview");
-        const name = document.getElementById("itemImageName");
-        const kind = document.getElementById("itemImageKind");
-        const pathText = document.getElementById("itemImagePath");
-
         const record = getSelectedImageRecord();
         const src = normalizeLocalPath(record);
 
-        if (!record || !src) {
+        if (!record || !src || !img) {
             panel.classList.add("hidden");
             return;
         }
@@ -329,10 +354,6 @@
 
         img.src = src;
         img.alt = record.name || "Item image";
-
-        name.textContent = record.name || "Selected item";
-        kind.textContent = `${record.kind || "item"} image`;
-        pathText.textContent = src;
     }
 
     function patchUiRefresh() {
