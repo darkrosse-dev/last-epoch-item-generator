@@ -1,7 +1,7 @@
 // Unique safety overlay
 // Blocks only unique formats that are not safely decoded yet:
 // 1) known Weaver's Will uniques
-// 2) special legendary-drop uniques such as Exulis
+// 2) explicitly listed special legendary-drop uniques such as Exulis
 
 (function () {
     const WEAVER_NAMES = new Set([
@@ -55,15 +55,10 @@
     }
 
     function isSpecialLegendary(unique) {
-        if (!unique || unique.isSetItem) return false;
-        if (SPECIAL_LEGENDARY_NAMES.has(cleanName(displayName(unique)))) return true;
-
-        return Boolean(
-            unique.dropsSpecificLegendaryAffixes === true ||
-            Number(unique.additionalRandomLegendaryAffixes || 0) > 0 ||
-            Number(unique.droppableLegendaryAffixCount || 0) > 0 ||
-            (Array.isArray(unique.droppableLegendaryAffixes) && unique.droppableLegendaryAffixes.length > 0)
-        );
+        // Important: do NOT infer this from droppableLegendaryAffixCount or canDropAsLegendary.
+        // Many normal uniques have those DB fields populated but still work with the current generator.
+        // For now, block only explicitly confirmed broken special-layout items.
+        return Boolean(unique && !unique.isSetItem && SPECIAL_LEGENDARY_NAMES.has(cleanName(displayName(unique))));
     }
 
     function selectedBaseTypeName() {
@@ -108,7 +103,7 @@
             return `WEAVER'S WILL ITEM MODE\nSelected: ${displayName(unique)}\nuniqueId: ${unique.uniqueId}\nbaseTypeID/subTypeID: ${baseSummary()}\n\nGeneration is blocked for this known Weaver's Will item.\n\nWhy:\n- Weaver's Will items cannot have Legendary Potential.\n- They gain random affixes while worn.\n- Their save layout is not decoded yet.\n\nNeeded to enable generation safely:\n1. A real save-array before it gains Weaver affixes.\n2. The same item with a different Weaver's Will value.\n3. The same item after it gains one Weaver affix.`;
         }
 
-        return `SPECIAL LEGENDARY UNIQUE - GENERATION BLOCKED\nSelected: ${displayName(unique)}\nuniqueId: ${unique.uniqueId}\nbaseTypeID/subTypeID: ${baseSummary()}\n\nThis item uses a special legendary-drop layout, not the normal Unique + LP layout.\n\nWhy it is blocked:\n- It can drop as a legendary or has specific/random legendary affix data.\n- Generating it as a normal LP unique can make the game interpret it as the wrong unique, for example Calamity.\n\nNeeded to enable generation safely:\n1. A real save-array for this exact item.\n2. Ideally another copy with different special legendary affixes.\n3. Then we can decode where those special affix bytes are stored.`;
+        return `SPECIAL LEGENDARY UNIQUE - GENERATION BLOCKED\nSelected: ${displayName(unique)}\nuniqueId: ${unique.uniqueId}\nbaseTypeID/subTypeID: ${baseSummary()}\n\nThis item appears to use a special legendary-drop layout, not the normal Unique + LP layout.\n\nWhy it is blocked:\n- This item was confirmed to generate incorrectly with the normal unique generator.\n- Generating it as a normal LP unique can make the game interpret it as the wrong unique, for example Calamity.\n\nNeeded to enable generation safely:\n1. A real save-array for this exact item.\n2. Ideally another copy with different special legendary affixes.\n3. Then we can decode where those special affix bytes are stored.`;
     }
 
     function blockedUnique() {
