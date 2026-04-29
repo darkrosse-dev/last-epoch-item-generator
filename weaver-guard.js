@@ -1,9 +1,10 @@
-// Weaver's Will safety overlay
-// This script patches the current generator without changing the large app.js file.
-// It blocks generation ONLY for the known Weaver's Will uniques listed below.
+// Unique safety overlay
+// Blocks only unique formats that are not safely decoded yet:
+// 1) known Weaver's Will uniques
+// 2) special legendary-drop uniques such as Exulis
 
 (function () {
-    const WEAVERS_WILL_NAMES = new Set([
+    const WEAVER_NAMES = new Set([
         "advent of the erased",
         "ambitions of an erased acolyte",
         "blight of lachesis",
@@ -24,7 +25,11 @@
         "weaver's gift"
     ]);
 
-    function normalizeName(value) {
+    const SPECIAL_LEGENDARY_NAMES = new Set([
+        "exulis"
+    ]);
+
+    function cleanName(value) {
         return String(value || "")
             .replace(/[’`]/g, "'")
             .replace(/\s+/g, " ")
@@ -36,47 +41,40 @@
         try {
             const name = itemDisplayName(item);
             if (name) return name;
-        } catch {
-            // Fall through to raw fields.
-        }
+        } catch {}
 
-        return item?.effectiveDisplayName ||
-            item?.displayName ||
-            item?.name ||
-            item?.slug ||
-            `uniqueId ${item?.uniqueId ?? "unknown"}`;
-    }
-
-    function isWeaverUniqueLocal(unique) {
-        // Important: do NOT classify by effectiveLevelForLegendaryPotential === -1.
-        // Several normal uniques, for example Fractured Crown, use that value but are not Weaver's Will items.
-        return Boolean(unique) && WEAVERS_WILL_NAMES.has(normalizeName(displayName(unique)));
+        return item?.effectiveDisplayName || item?.displayName || item?.name || item?.slug || `uniqueId ${item?.uniqueId ?? "unknown"}`;
     }
 
     function selectedUnique() {
-        try {
-            return state?.selectedSpecialItem || null;
-        } catch {
-            return null;
-        }
+        try { return state?.selectedSpecialItem || null; } catch { return null; }
     }
 
-    function selectedWeaver() {
-        const unique = selectedUnique();
-        return isWeaverUniqueLocal(unique) ? unique : null;
+    function isWeaver(unique) {
+        return Boolean(unique) && WEAVER_NAMES.has(cleanName(displayName(unique)));
+    }
+
+    function isSpecialLegendary(unique) {
+        if (!unique || unique.isSetItem) return false;
+        if (SPECIAL_LEGENDARY_NAMES.has(cleanName(displayName(unique)))) return true;
+
+        return Boolean(
+            unique.dropsSpecificLegendaryAffixes === true ||
+            Number(unique.additionalRandomLegendaryAffixes || 0) > 0 ||
+            Number(unique.droppableLegendaryAffixCount || 0) > 0 ||
+            (Array.isArray(unique.droppableLegendaryAffixes) && unique.droppableLegendaryAffixes.length > 0)
+        );
     }
 
     function selectedBaseTypeName() {
         try {
             const t = getSelectedItemType();
             return t?.displayName || t?.baseTypeName || t?.name || "";
-        } catch {
-            return "";
-        }
+        } catch { return ""; }
     }
 
     function isUniqueIdol(unique) {
-        const haystack = normalizeName([
+        const haystack = cleanName([
             displayName(unique),
             unique?.baseTypeName,
             unique?.baseDisplayName,
@@ -85,94 +83,73 @@
             unique?.category,
             selectedBaseTypeName()
         ].filter(Boolean).join(" "));
-
         return /\bidol\b/.test(haystack);
     }
 
     function uniqueAllowsLegendaryPotential(unique) {
         if (!unique) return false;
         if (unique.isSetItem) return false;
-        if (isWeaverUniqueLocal(unique)) return false;
+        if (isWeaver(unique)) return false;
+        if (isSpecialLegendary(unique)) return false;
         if (isUniqueIdol(unique)) return false;
-
-        // Normal uniques should be usable even when the parsed DB has
-        // effectiveLevelForLegendaryPotential: -1 or canHaveLegendaryPotential: false.
         return true;
     }
 
-    function selectedBaseSummary() {
+    function baseSummary() {
         try {
             const t = getSelectedItemType();
             const item = getSelectedItem();
-            return {
-                baseTypeID: t?.baseTypeID ?? "unknown",
-                subTypeID: item?.subTypeID ?? "unknown"
-            };
-        } catch {
-            return { baseTypeID: "unknown", subTypeID: "unknown" };
-        }
+            return `${t?.baseTypeID ?? "unknown"}/${item?.subTypeID ?? "unknown"}`;
+        } catch { return "unknown/unknown"; }
     }
 
-    function weaverMessage(unique) {
-        const base = selectedBaseSummary();
-        return `WEAVER'S WILL ITEM MODE\n` +
-            `Selected: ${displayName(unique)}\n` +
-            `uniqueId: ${unique.uniqueId}\n` +
-            `baseTypeID/subTypeID: ${base.baseTypeID}/${base.subTypeID}\n\n` +
-            `Generation is intentionally blocked for this known Weaver's Will item.\n\n` +
-            `Why:\n` +
-            `- Weaver's Will items cannot have Legendary Potential.\n` +
-            `- They gain random affixes while worn, and their save layout likely contains a Weaver's Will / progression byte or block that is not yet decoded.\n\n` +
-            `Needed to enable generation safely:\n` +
-            `1. A real save-array for this exact item before it gains any Weaver affixes.\n` +
-            `2. The same item with a different Weaver's Will value, if possible.\n` +
-            `3. The same item after it gains one Weaver affix.\n\n` +
-            `Until then, generating this item could corrupt the byte layout.`;
+    function blockedMessage(unique) {
+        if (isWeaver(unique)) {
+            return `WEAVER'S WILL ITEM MODE\nSelected: ${displayName(unique)}\nuniqueId: ${unique.uniqueId}\nbaseTypeID/subTypeID: ${baseSummary()}\n\nGeneration is blocked for this known Weaver's Will item.\n\nWhy:\n- Weaver's Will items cannot have Legendary Potential.\n- They gain random affixes while worn.\n- Their save layout is not decoded yet.\n\nNeeded to enable generation safely:\n1. A real save-array before it gains Weaver affixes.\n2. The same item with a different Weaver's Will value.\n3. The same item after it gains one Weaver affix.`;
+        }
+
+        return `SPECIAL LEGENDARY UNIQUE - GENERATION BLOCKED\nSelected: ${displayName(unique)}\nuniqueId: ${unique.uniqueId}\nbaseTypeID/subTypeID: ${baseSummary()}\n\nThis item uses a special legendary-drop layout, not the normal Unique + LP layout.\n\nWhy it is blocked:\n- It can drop as a legendary or has specific/random legendary affix data.\n- Generating it as a normal LP unique can make the game interpret it as the wrong unique, for example Calamity.\n\nNeeded to enable generation safely:\n1. A real save-array for this exact item.\n2. Ideally another copy with different special legendary affixes.\n3. Then we can decode where those special affix bytes are stored.`;
+    }
+
+    function blockedUnique() {
+        const unique = selectedUnique();
+        return unique && (isWeaver(unique) || isSpecialLegendary(unique)) ? unique : null;
     }
 
     function applyUniqueUi() {
         const unique = selectedUnique();
         if (!unique || typeof el === "undefined") return;
 
-        const isWeaver = isWeaverUniqueLocal(unique);
+        const blocked = isWeaver(unique) || isSpecialLegendary(unique);
         const allowsLp = uniqueAllowsLegendaryPotential(unique);
 
         if (el.uniqueLp) {
-            if (allowsLp) {
-                el.uniqueLp.disabled = false;
-            } else {
+            if (allowsLp) el.uniqueLp.disabled = false;
+            else {
                 el.uniqueLp.value = "0";
                 el.uniqueLp.disabled = true;
             }
         }
 
         if (el.uniqueModeNotice) {
-            if (isWeaver) {
-                el.uniqueModeNotice.textContent =
-                    `Weaver's Will item selected: ${displayName(unique)}\n` +
-                    `Legendary Potential is disabled. Weaver's Will save layout is not confirmed yet, so generation is blocked for this item type.`;
+            if (isWeaver(unique)) {
+                el.uniqueModeNotice.textContent = `Weaver's Will item selected: ${displayName(unique)}\nLegendary Potential is disabled. Generation is blocked until the Weaver's Will layout is decoded.`;
+            } else if (isSpecialLegendary(unique)) {
+                el.uniqueModeNotice.textContent = `Special legendary unique selected: ${displayName(unique)}\nGeneration is blocked until its special legendary-affix save layout is decoded.`;
             } else if (unique.isSetItem) {
-                el.uniqueModeNotice.textContent =
-                    `Set item selected: ${displayName(unique)}\n` +
-                    `Legendary Potential is disabled and forced to 0 for set items.`;
+                el.uniqueModeNotice.textContent = `Set item selected: ${displayName(unique)}\nLegendary Potential is disabled and forced to 0 for set items.`;
             } else if (isUniqueIdol(unique)) {
-                el.uniqueModeNotice.textContent =
-                    `Unique idol selected: ${displayName(unique)}\n` +
-                    `Legendary Potential is disabled and forced to 0 for unique idols.`;
+                el.uniqueModeNotice.textContent = `Unique idol selected: ${displayName(unique)}\nLegendary Potential is disabled and forced to 0 for unique idols.`;
             } else {
-                el.uniqueModeNotice.textContent =
-                    `Unique item selected: ${displayName(unique)}\n` +
-                    `Legendary Potential can be selected from 0 to 4.`;
+                el.uniqueModeNotice.textContent = `Unique item selected: ${displayName(unique)}\nLegendary Potential can be selected from 0 to 4.`;
             }
         }
 
-        if (el.forgingPotentialWrap) {
-            el.forgingPotentialWrap.classList.add("hidden");
-        }
+        if (blocked && el.forgingPotentialWrap) el.forgingPotentialWrap.classList.add("hidden");
     }
 
-    function blockIfWeaver(event) {
-        const unique = selectedWeaver();
+    function blockIfNeeded(event) {
+        const unique = blockedUnique();
         if (!unique) return false;
 
         if (event) {
@@ -182,19 +159,15 @@
 
         if (typeof el !== "undefined") {
             if (el.output) el.output.value = "";
-            if (el.preview) el.preview.textContent = weaverMessage(unique);
+            if (el.preview) el.preview.textContent = blockedMessage(unique);
         }
 
-        alert("Weaver's Will item generation is blocked until its save layout is decoded.");
+        alert(`${displayName(unique)} is blocked until its save layout is decoded.`);
         return true;
     }
 
     try {
-        // Replace the broad DB-driven LP check with explicit rules:
-        // set items: no LP, known Weaver's Will: no LP, unique idols: no LP, other uniques: LP allowed.
-        if (typeof uniqueAllowsLp === "function") {
-            uniqueAllowsLp = uniqueAllowsLegendaryPotential;
-        }
+        if (typeof uniqueAllowsLp === "function") uniqueAllowsLp = uniqueAllowsLegendaryPotential;
 
         if (typeof updateUniqueControls === "function") {
             const originalUpdateUniqueControls = updateUniqueControls;
@@ -207,12 +180,12 @@
         if (typeof generateUnique === "function") {
             const originalGenerateUnique = generateUnique;
             generateUnique = function (t, item, unique) {
-                if (isWeaverUniqueLocal(unique)) {
+                if (unique && (isWeaver(unique) || isSpecialLegendary(unique))) {
                     if (typeof el !== "undefined") {
                         if (el.output) el.output.value = "";
-                        if (el.preview) el.preview.textContent = weaverMessage(unique);
+                        if (el.preview) el.preview.textContent = blockedMessage(unique);
                     }
-                    alert("Weaver's Will item generation is blocked until its save layout is decoded.");
+                    alert(`${displayName(unique)} is blocked until its save layout is decoded.`);
                     return;
                 }
                 return originalGenerateUnique(t, item, unique);
@@ -221,19 +194,14 @@
 
         window.addEventListener("DOMContentLoaded", () => {
             if (typeof el !== "undefined") {
-                if (el.generateBtn) {
-                    el.generateBtn.addEventListener("click", blockIfWeaver, true);
-                }
-
-                if (el.globalItemResults) {
-                    el.globalItemResults.addEventListener("change", () => setTimeout(applyUniqueUi, 0));
-                    el.globalItemResults.addEventListener("dblclick", () => setTimeout(applyUniqueUi, 0));
-                }
+                el.generateBtn?.addEventListener("click", blockIfNeeded, true);
+                el.globalItemResults?.addEventListener("change", () => setTimeout(applyUniqueUi, 0));
+                el.globalItemResults?.addEventListener("dblclick", () => setTimeout(applyUniqueUi, 0));
+                el.itemSelect?.addEventListener("change", () => setTimeout(applyUniqueUi, 0));
             }
-
             setTimeout(applyUniqueUi, 0);
         });
     } catch (err) {
-        console.error("Failed to install Weaver's Will guard", err);
+        console.error("Failed to install unique safety guard", err);
     }
 })();
