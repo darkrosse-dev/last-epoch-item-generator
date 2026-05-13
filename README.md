@@ -326,16 +326,6 @@ byte1 = affixId & 255
 byte2 = rollByte
 ```
 
-### Data improvements
-
-- Parsed the game DB bundle into formatted JSON files.
-- Added item data in JSON format.
-- Added affix data in JSON format.
-- Added combined offline DB JSON.
-- Added searchable base, Unique, and Set item lists.
-
----
-
 ## Known limitations
 
 - Weaver's Will save layout is not fully decoded yet.
@@ -376,5 +366,3 @@ data/
   item_dump.json
   affix_dump.json
 ```
-
-The site can be hosted on GitHub Pages, Netlify, Vercel, or any static hosting service.
